@@ -1,0 +1,13 @@
+__pycache__
+*.pyc
+.env
+venv
+__tests__
+*.log
+.git
+.gitignore
+.DS_Store
+.env.local
+.env.development
+.env.test
+.env.production
