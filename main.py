@@ -1,6 +1,7 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.responses import FileResponse
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
@@ -29,8 +30,8 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 # Email configuration
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
-SMTP_EMAIL = "your-email@gmail.com"
-SMTP_PASSWORD = "your-app-specific-password"
+SMTP_EMAIL = "fileshare.system@gmail.com"
+SMTP_PASSWORD = "your-app-specific-password"  # This should be set in environment variables
 
 # Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -143,16 +144,19 @@ def get_current_ops_user(current_user: User = Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="Not an operations user")
     return current_user
 
-@app.post("/signup", response_model=Token)
+@app.post("/signup")
 async def signup(user: UserCreate, db: Session = Depends(get_db)):
-    db_user = db.query(User).filter(User.email == user.email).first()
-    if db_user:
+    # Check if user already exists
+    existing_user = db.query(User).filter(User.email == user.email).first()
+    if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
     
+    # Create new user
+    hashed_password = get_password_hash(user.password)
     verification_token = secrets.token_urlsafe(32)
     db_user = User(
         email=user.email,
-        hashed_password=get_password_hash(user.password),
+        hashed_password=hashed_password,
         is_ops_user=user.is_ops_user,
         verification_token=verification_token
     )
@@ -160,14 +164,12 @@ async def signup(user: UserCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(db_user)
     
-    # Send verification email
-    send_verification_email(user.email, verification_token)
+    try:
+        send_verification_email(user.email, verification_token)
+    except Exception as e:
+        print(f"Failed to send verification email: {str(e)}")
     
-    access_token = create_access_token(
-        data={"sub": user.email},
-        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    )
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {"message": "User created successfully. Please check your email for verification.", "verification_token": verification_token}
 
 @app.post("/verify-email/{token}")
 async def verify_email(token: str, db: Session = Depends(get_db)):
@@ -178,7 +180,12 @@ async def verify_email(token: str, db: Session = Depends(get_db)):
     user.is_verified = True
     user.verification_token = None
     db.commit()
-    return {"message": "Email verified successfully"}
+    
+    access_token = create_access_token(
+        data={"sub": user.email},
+        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+    return {"message": "Email verified successfully", "access_token": access_token, "token_type": "bearer"}
 
 @app.post("/token", response_model=Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
@@ -204,7 +211,7 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 
 @app.post("/upload-file/")
 async def upload_file(
-    file: UploadFile = File(...),
+    file: UploadFile,
     current_user: User = Depends(get_current_ops_user),
     db: Session = Depends(get_db)
 ):
@@ -225,48 +232,49 @@ async def upload_file(
     # Save file to disk
     file_location = f"uploads/{download_token}_{file.filename}"
     os.makedirs("uploads", exist_ok=True)
+    
+    # Save file content
     with open(file_location, "wb") as buffer:
         content = await file.read()
         buffer.write(content)
     
     return {"message": "File uploaded successfully", "download_token": download_token}
-
-@app.get("/download-file/{file_id}")
-async def get_download_link(
-    file_id: int,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    file = db.query(File).filter(File.id == file_id).first()
-    if not file:
-        raise HTTPException(status_code=404, detail="File not found")
     
-    if not current_user.is_ops_user:
-        raise HTTPException(status_code=403, detail="Access denied")
-    
-    download_url = f"/download/{file.download_token}"
-    return {"download-link": download_url, "message": "success"}
+    return {"message": "File uploaded successfully", "download_token": download_token}
 
-@app.get("/download/{token}")
+@app.get("/download-file/{download_token}")
 async def download_file(
-    token: str,
+    download_token: str,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    file = db.query(File).filter(File.download_token == token).first()
+    file = db.query(File).filter(File.download_token == download_token).first()
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
     
-    if current_user.is_ops_user:
-        raise HTTPException(status_code=403, detail="Access denied")
+    # Ensure uploads directory exists
+    os.makedirs("uploads", exist_ok=True)
     
-    file_location = f"uploads/{token}_{file.filename}"
+    file_location = os.path.join("uploads", f"{download_token}_{file.filename}")
     if not os.path.exists(file_location):
         raise HTTPException(status_code=404, detail="File not found")
     
-    return FileResponse(file_location, filename=file.filename)
+    return FileResponse(
+        file_location,
+        filename=file.filename,
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{file.filename}"'}
+    )
 
-@app.get("/files", response_model=List[FileUpload])
+@app.get("/users/me")
+async def read_users_me(current_user: User = Depends(get_current_active_user)):
+    return {
+        "email": current_user.email,
+        "is_ops_user": current_user.is_ops_user,
+        "is_verified": current_user.is_verified
+    }
+
+@app.get("/files")
 async def list_files(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
@@ -275,7 +283,14 @@ async def list_files(
         files = db.query(File).all()
     else:
         files = db.query(File).filter(File.uploaded_by == current_user.id).all()
-    return files
+    
+    # Convert SQLAlchemy models to dictionaries
+    return [{
+        "filename": file.filename,
+        "download_token": file.download_token,
+        "uploaded_by": file.uploaded_by,
+        "upload_date": file.upload_date.isoformat()
+    } for file in files]
 
 def send_verification_email(email: str, token: str):
     message = MIMEMultipart()
