@@ -1,0 +1,191 @@
+{
+    "info": {
+        "name": "Secure File Sharing System API",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "Authentication",
+            "item": [
+                {
+                    "name": "Signup",
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/signup",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["signup"]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"email\": \"test@example.com\", \"password\": \"password123\", \"is_ops_user\": true}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "description": "Create a new user account"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Login",
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/token",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["token"]
+                        },
+                        "body": {
+                            "mode": "urlencoded",
+                            "urlencoded": [
+                                {
+                                    "key": "username",
+                                    "value": "test@example.com",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "password",
+                                    "value": "password123",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        "description": "Get JWT token for authentication"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Verify Email",
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/verify-email/{{verification_token}}",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["verify-email", "{{verification_token}}"]
+                        },
+                        "description": "Verify user email using verification token"
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "File Operations",
+            "item": [
+                {
+                    "name": "Upload File",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/upload-file/",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["upload-file", ""]
+                        },
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "file",
+                                    "type": "file",
+                                    "src": "{{file_path}}"
+                                }
+                            ]
+                        },
+                        "description": "Upload a file (supported formats: .pptx, .docx, .xlsx)"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Download File",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/download-file/{{download_token}}",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["download-file", "{{download_token}}"]
+                        },
+                        "description": "Download a file using its download token"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "List Files",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/files",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["files"]
+                        },
+                        "description": "List all files (OPS users see all files, regular users see their own files)"
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "User Info",
+            "item": [
+                {
+                    "name": "Get User Info",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/users/me",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["users", "me"]
+                        },
+                        "description": "Get current user's information"
+                    },
+                    "response": []
+                }
+            ]
+        }
+    ],
+    "event": [
+        {
+            "listen": "prerequest",
+            "script": {
+                "type": "text/javascript",
+                "exec": [
+                    "// Set default base URL",
+                    "pm.environment.set('baseUrl', 'http://localhost:8000');"
+                ]
+            }
+        }
+    ]
+}
